@@ -223,7 +223,7 @@ def identify_crop_objects(crops,agent, history):
             }
         ])
 
-        response = agent.invoke({"messages": example_history +[message]})
+        response = agent.invoke({"messages": history +[message]})
         item = response["messages"][-1].content
         
         identified_items.append(item)
@@ -332,14 +332,14 @@ def main():
     if verbose:
         prLightPurple("Set up model")
     yolo_model = YOLO("yolo26n.pt")
-    results = yolo_model(args.file_path, stream=True, conf=0.3)
+    results = yolo_model(args.file_path, stream=True, conf=0.1)
 
     if verbose:
         prLightPurple("Crop Model")
     crops = crop_found_objects(args.file_path,results)
     if verbose:
         prLightPurple("Identifing Items")
-    identified_items = identify_crop_objects(crops)
+    identified_items = identify_crop_objects(crops,llava_agent, llava_history)
     if verbose:
         prLightPurple("Formating")
     ingredient_list = format_identify_objects(identified_items)
@@ -352,10 +352,10 @@ def main():
 
     response = base_agent.invoke(
         {"messages": [HumanMessage(content=f"I have some {ingredient_list}. What can I make?")]},
-        config
+        {"configurable": {"thread_id": "1"}}
     )
-
     print(response['messages'][-1].content)
+
     end = time.perf_counter()
     print(f"Total time: {end - start:.4f} seconds")
     return 0
