@@ -155,13 +155,41 @@ def crop_found_objects(file_path, results):
     else:
         # Single image
         img = cv2.imread(file_path)
-        r = results[0]
-        if r.boxes is not None and len(r.boxes) > 0:
-            for i, box in enumerate(r.boxes.xyxy.tolist()):
+        with open(file_path, "rb") as f:
+            file_check_sum = hashlib.md5(f.read()).hexdigest()
+        if verbose:
+            print("file_check_sum:", file_check_sum)
+
+        crops = []
+        
+        # Iterate through the results (which is a generator)
+        for r in results:
+            boxes = r.boxes.xyxy.tolist()
+
+            crop_dir = Path("temp") / file_check_sum
+            crop_dir.mkdir(parents=True, exist_ok=True)
+
+            # Set for keeping track of crop hashes to avoid duplicates
+            seen_crop_hashes = set()
+
+            for i, box in enumerate(boxes):
                 x1, y1, x2, y2 = map(int, box)
                 crop = img[y1:y2, x1:x2]
+
+                # Hash the crop to avoid duplicate object detections
+                small_crop = cv2.cvtColor(cv2.resize(crop, (32, 32)), cv2.COLOR_BGR2GRAY)
+                crop_hash = hashlib.md5(small_crop.tobytes()).hexdigest()
+
+                if crop_hash in seen_crop_hashes:
+                    if verbose:
+                        print("Skipped duplicate crop")
+                    continue  # Skip already seen crop
+
+                seen_crop_hashes.add(crop_hash)
+
                 crops.append(crop)
-                cv2.imwrite(f"{crop_dir}/item_{i}.jpg", crop)
+                # Optional: Save crops
+                cv2.imwrite(f"temp/{file_check_sum}/item_{i}.jpg", crop)
 
     return crops
 
