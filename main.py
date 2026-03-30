@@ -11,7 +11,7 @@ from dotenv import set_key
 # AI imports
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langchain.messages import HumanMessage
+from langchain.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain.tools import tool
 from ultralytics import YOLO
@@ -168,37 +168,7 @@ def encode_image(img_array):
     return base64.b64encode(buffer).decode("utf-8")
 
 
-def identify_crop_objects(crops):
-    agent = create_agent(
-        model=init_chat_model(model="llava", model_provider="ollama", temperature=0),
-        system_prompt="""
-        You are identifying food items from images.
-
-        Rules:
-        - Only name the specific food item
-        - No descriptions
-        - No sentences
-        - No explanations
-        - If unsure, return: unknown
-
-        Examples:
-        milk
-        mustard
-        yogurt
-        unknown
-        """
-        )
-    example_history = [
-        {"role": "user", "content": "What food item is this?"},
-        {"role": "assistant", "content": "apple\n peach"},
-        {"role": "user", "content": "What food item is this?"},
-        {"role": "assistant", "content": "mustard"},
-        {"role": "user", "content": "What food item is this?"},
-        {"role": "assistant", "content": "carton of eggs"},
-        {"role": "user", "content": "What food item is this?"},
-        {"role": "assistant", "content": "unknown"}
-    ]
-
+def identify_crop_objects(crops,agent, history):
     identified_items = []
 
     seen_crop_hashes = set()
@@ -254,6 +224,60 @@ def format_identify_objects(identified_items):
     # remove duplicates
     return list(set(cleaned_items))
 
+def llava_agent_create():
+    agent = create_agent(
+        model=init_chat_model(
+            model="llava", 
+            model_provider="ollama",
+              temperature=0
+        ),
+        system_prompt="""
+        You are identifying food items from images.
+        Return only the food name.
+
+        Rules:
+        - One item only
+        - No punctuation
+        - No sentences
+        - No explanation
+        - If unsure return: unknown
+
+
+        Examples:
+        milk
+        mustard
+        yogurt
+        unknown
+        """
+        )
+    example_history = [
+        HumanMessage(content="What food item is this?"),
+        AIMessage(content="apple"),
+        HumanMessage(content="What food item is this?"),
+        AIMessage(content="mustard"),
+        HumanMessage(content="What food item is this?"),
+        AIMessage(content="carton of eggs"),
+        HumanMessage(content="What food item is this?"),
+        AIMessage(content="unknown"),
+    ]
+    return {
+        "agent": agent,
+        "history": example_history
+        }
+
+def base_agent_create():
+    return create_agent(
+        model=init_chat_model(model="mistral-nemo",model_provider="ollama"),
+        tools=[web_search_with_key],
+        system_prompt = """
+        You are a personal chef. The user will give you a list of ingredients they have left over in their house.
+        Using the web search tool, search the web for recipes that can be made with the ingredients they have.
+        Return recipe suggestions and eventually the recipe instructions to the user, if requested.
+        """,
+        checkpointer=InMemorySaver()
+    )
+
+
 def main():
     start = time.perf_counter()
     # Check Args
@@ -270,6 +294,10 @@ def main():
         prRed("Error: API key Not found\nRun flag -at add the Tavily API Key (only the first time)")
         return 1
     
+    llava_config = llava_agent_create()
+    llava_agent = llava_config["agent"]
+    llava_history = llava_config["history"]
+
     # Object Detection AI
     if verbose:
         prLightPurple("Set up model")
@@ -289,19 +317,10 @@ def main():
     # Web Search w/ Tavily
     if verbose:
         prLightPurple("Seating up and searching the web")
-    agent = create_agent(
-        model=init_chat_model(model="mistral-nemo",model_provider="ollama"),
-        tools=[web_search_with_key],
-        system_prompt = """
-        You are a personal chef. The user will give you a list of ingredients they have left over in their house.
-        Using the web search tool, search the web for recipes that can be made with the ingredients they have.
-        Return recipe suggestions and eventually the recipe instructions to the user, if requested.
-        """,
-        checkpointer=InMemorySaver()
-    )
-    config = {"configurable": {"thread_id": "1"}}
 
-    response = agent.invoke(
+    base_agent = base_agent_create()
+
+    response = base_agent.invoke(
         {"messages": [HumanMessage(content=f"I have some {ingredient_list}. What can I make?")]},
         config
     )
