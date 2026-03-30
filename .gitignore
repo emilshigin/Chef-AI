@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+temp/
+*.egg-info
+*.Python
+
+# Media Files
+*.jpg
+*.mp4
+
+
+# Virtual environments
+.venv
+
+# YOLO models
+*.pt
+.DS_Store
