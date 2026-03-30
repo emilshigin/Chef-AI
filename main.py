@@ -106,7 +106,9 @@ def is_similar(frame1, frame2, threshold=30):
     return diff.mean() < threshold
 
 def crop_found_objects(file_path, results):
-    crop_dir = Path("temp") / hashlib.md5(file_path.encode()).hexdigest()
+    with open(file_path, "rb") as f:
+            file_check_sum = hashlib.md5(f.read()).hexdigest()
+    crop_dir = Path("temp") / file_check_sum
     crop_dir.mkdir(parents=True, exist_ok=True)
 
     crops = []
